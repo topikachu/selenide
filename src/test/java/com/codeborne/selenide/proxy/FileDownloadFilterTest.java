@@ -2,9 +2,6 @@ package com.codeborne.selenide.proxy;
 
 import com.browserup.bup.util.HttpMessageContents;
 import com.browserup.bup.util.HttpMessageInfo;
-import com.codeborne.selenide.SelenideConfig;
-import com.codeborne.selenide.impl.Downloader;
-import com.codeborne.selenide.impl.DummyRandomizer;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpResponse;
@@ -17,15 +14,12 @@ import java.io.File;
 import java.io.IOException;
 
 import static org.apache.commons.io.FileUtils.deleteDirectory;
-import static org.apache.commons.io.FileUtils.readFileToByteArray;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class FileDownloadFilterTest implements WithAssertions {
-  private FileDownloadFilter filter = new FileDownloadFilter(
-    new SelenideConfig().reportsFolder("build/downloads"), new Downloader(new DummyRandomizer("random-text"))
-  );
+  private FileDownloadFilter filter = new FileDownloadFilter();
   private HttpResponse response = mock(HttpResponse.class);
   private HttpMessageContents contents = mock(HttpMessageContents.class);
   private HttpMessageInfo messageInfo = mock(HttpMessageInfo.class);
@@ -63,7 +57,7 @@ class FileDownloadFilterTest implements WithAssertions {
     mockStatusCode(199, "below 200");
     filter.filterResponse(response, contents, messageInfo);
 
-    assertThat(filter.getResponses())
+    assertThat(filter.allResponsesAsString())
       .isEqualTo("Intercepted 1 responses:\n  #1  null -> 199 \"below 200\" {hkey-01=hvalue-01} app/json  (7 bytes)\n");
   }
 
@@ -77,7 +71,7 @@ class FileDownloadFilterTest implements WithAssertions {
     mockStatusCode(300, "300 or above");
     filter.filterResponse(response, contents, messageInfo);
 
-    assertThat(filter.getResponses())
+    assertThat(filter.allResponsesAsString())
       .isEqualTo("Intercepted 1 responses:\n  #1  null -> 300 \"300 or above\" {hkey-01=hvalue-01} app/json  (7 bytes)\n");
   }
 
@@ -88,24 +82,21 @@ class FileDownloadFilterTest implements WithAssertions {
     mockHeaders();
     filter.filterResponse(response, contents, messageInfo);
 
-    assertThat(filter.getResponses())
+    assertThat(filter.allResponsesAsString())
       .isEqualTo("Intercepted 1 responses:\n  #1  null -> 200 \"200=success\" {} app/json  (7 bytes)\n");
   }
 
   @Test
-  void interceptsHttpResponse() throws IOException {
+  void interceptsHttpResponse() {
     filter.activate();
     mockStatusCode(200, "200=success");
     mockHeaders().add("content-disposition", "attachement; filename=report.pdf");
     when(contents.getBinaryContents()).thenReturn(new byte[]{1, 2, 3, 4, 5});
 
     filter.filterResponse(response, contents, messageInfo);
-    assertThat(filter.getDownloadedFiles().size())
-      .isEqualTo(1);
 
-    File file = filter.getDownloadedFiles().get(0);
-    assertThat(file.getName()).isEqualTo("report.pdf");
-    assertThat(file.getPath()).endsWith("build/downloads/random-text/report.pdf");
-    assertThat(readFileToByteArray(file)).isEqualTo(new byte[]{1, 2, 3, 4, 5});
+    assertThat(filter.getResponses()).hasSize(1);
+    assertThat(filter.getPotentialDownloads()).hasSize(1);
+    assertThat(filter.getPotentialDownloads().get(0).contents).isSameAs(contents);
   }
 }

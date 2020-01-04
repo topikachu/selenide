@@ -3,41 +3,20 @@ package com.codeborne.selenide.proxy;
 import com.browserup.bup.filters.ResponseFilter;
 import com.browserup.bup.util.HttpMessageContents;
 import com.browserup.bup.util.HttpMessageInfo;
-import com.codeborne.selenide.Config;
-import com.codeborne.selenide.impl.Downloader;
 import com.codeborne.selenide.impl.HttpHelper;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpResponse;
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class FileDownloadFilter implements ResponseFilter {
-  private static final Logger log = LoggerFactory.getLogger(FileDownloadFilter.class);
-
-  private final Config config;
-  private final Downloader downloader;
-
-  private HttpHelper httpHelper = new HttpHelper();
+  private final HttpHelper httpHelper = new HttpHelper();
   private boolean active;
-  private final List<File> downloadedFiles = new ArrayList<>();
   private final List<Response> responses = new ArrayList<>();
-
-  public FileDownloadFilter(Config config) {
-    this(config, new Downloader());
-  }
-
-  FileDownloadFilter(Config config, Downloader downloader) {
-    this.config = config;
-    this.downloader = downloader;
-  }
+  private final List<Response> potentialDownloads = new ArrayList<>();
 
   /**
    * Activate this filter.
@@ -45,7 +24,7 @@ public class FileDownloadFilter implements ResponseFilter {
    * These responses are supposed to contain a file being downloaded.
    */
   public void activate() {
-    downloadedFiles.clear();
+    potentialDownloads.clear();
     responses.clear();
     active = true;
   }
@@ -58,31 +37,22 @@ public class FileDownloadFilter implements ResponseFilter {
     active = false;
   }
 
+  public boolean isActive() {
+    return active;
+  }
+
   @Override
   public void filterResponse(HttpResponse response, HttpMessageContents contents, HttpMessageInfo messageInfo) {
-    if (!active) return;
+    if (!isActive()) return;
 
-    responses.add(new Response(messageInfo.getUrl(),
-        response.status().code(),
-        response.status().reasonPhrase(),
-        toMap(response.headers()),
-        contents.getContentType(),
-        contents.getTextContents()
-    ));
-
-    if (response.status().code() < 200 || response.status().code() >= 300) return;
-
-    String fileName = getFileName(response);
-    if (fileName == null) return;
-
-    File file = downloader.prepareTargetFile(config, fileName);
-    try {
-      FileUtils.writeByteArrayToFile(file, contents.getBinaryContents());
-      downloadedFiles.add(file);
-    }
-    catch (IOException e) {
-      log.error("Failed to save downloaded file to {} for url {}", file.getAbsolutePath(), messageInfo.getUrl(), e);
-    }
+    Response r = new Response(messageInfo.getUrl(),
+      response.status().code(),
+      response.status().reasonPhrase(),
+      toMap(response.headers()),
+      contents
+    );
+    responses.add(r);
+    if (isLikelyDownload(r)) potentialDownloads.add(r);
   }
 
   private Map<String, String> toMap(HttpHeaders headers) {
@@ -93,22 +63,31 @@ public class FileDownloadFilter implements ResponseFilter {
     return map;
   }
 
+  List<Response> getResponses() {
+    return responses;
+  }
+
   /**
    * @return list of all downloaded files since activation.
    */
-  public List<File> getDownloadedFiles() {
-    return downloadedFiles;
+  public List<Response> getPotentialDownloads() {
+    return potentialDownloads;
   }
 
-  String getFileName(HttpResponse response) {
-    return httpHelper.getFileNameFromContentDisposition(response.headers().entries())
-      .orElse(null);
+  public boolean hasPotentialDownloads() {
+    return !potentialDownloads.isEmpty();
+  }
+
+  private boolean isLikelyDownload(Response response) {
+    if (response.code < 200 || response.code >= 300) return false;
+    if (httpHelper.getFileNameFromContentDisposition(response.headers).isPresent()) return true;
+    return false;
   }
 
   /**
    * @return all intercepted http response (as a string) - it can be useful for debugging
    */
-  public String getResponses() {
+  public String allResponsesAsString() {
     StringBuilder sb = new StringBuilder();
     sb.append("Intercepted ").append(responses.size()).append(" responses:\n");
 
@@ -119,28 +98,26 @@ public class FileDownloadFilter implements ResponseFilter {
     return sb.toString();
   }
 
-  private static class Response {
-    private String url;
-    private int code;
-    private String reasonPhrase;
-    private String contentType;
-    private Map<String, String> headers;
-    private String content;
+  public static class Response {
+    public final String url;
+    private final int code;
+    private final String reasonPhrase;
+    public final Map<String, String> headers;
+    public final HttpMessageContents contents;
 
-    private Response(String url, int code, String reasonPhrase, Map<String, String> headers,
-                     String contentType, String content) {
+    public Response(String url, int code, String reasonPhrase, Map<String, String> headers,
+                     HttpMessageContents contents) {
       this.url = url;
       this.code = code;
       this.reasonPhrase = reasonPhrase;
       this.headers = headers;
-      this.contentType = contentType;
-      this.content = content;
+      this.contents = contents;
     }
 
     @Override
     public String toString() {
       return url + " -> " + code + " \"" + reasonPhrase + "\" " + headers + " " +
-          contentType + " " + " (" + content.length() + " bytes)";
+        contents.getContentType() + " " + " (" + contents.getTextContents().length() + " bytes)";
     }
   }
 }

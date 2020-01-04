@@ -2,9 +2,9 @@ package com.codeborne.selenide.proxy;
 
 import com.browserup.bup.BrowserUpProxy;
 import com.browserup.bup.client.ClientUtil;
+import com.browserup.bup.filters.RequestFilter;
 import com.browserup.bup.filters.ResponseFilter;
 import com.codeborne.selenide.Config;
-import com.browserup.bup.filters.RequestFilter;
 import org.openqa.selenium.Proxy;
 
 import java.net.InetSocketAddress;
@@ -59,7 +59,7 @@ public class SelenideProxyServer {
     addRequestFilter("authentication", new AuthenticationFilter());
     addRequestFilter("requestSizeWatchdog", new RequestSizeWatchdog());
     addResponseFilter("responseSizeWatchdog", new ResponseSizeWatchdog());
-    addResponseFilter("download", new FileDownloadFilter(config));
+    addResponseFilter("download", new FileDownloadFilter());
 
     proxy.start(config.proxyPort());
     port = proxy.getPort();

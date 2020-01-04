@@ -20,13 +20,15 @@ public class DownloadFileWithProxyServer {
   private static final Logger log = LoggerFactory.getLogger(DownloadFileWithProxyServer.class);
 
   private final Waiter waiter;
+  private final Downloader downloader;
 
-  DownloadFileWithProxyServer(Waiter waiter) {
+  DownloadFileWithProxyServer(Waiter waiter, Downloader downloader) {
     this.waiter = waiter;
+    this.downloader = downloader;
   }
 
   public DownloadFileWithProxyServer() {
-    this(new Waiter());
+    this(new Waiter(), new Downloader());
   }
 
   public File download(WebElementSource anyClickableElement,
@@ -83,20 +85,24 @@ public class DownloadFileWithProxyServer {
   private static class HasDownloads implements Predicate<FileDownloadFilter> {
     @Override
     public boolean apply(FileDownloadFilter filter) {
-      return !filter.getDownloadedFiles().isEmpty();
+      return filter.hasPotentialDownloads();
     }
   }
 
   private File firstDownloadedFile(WebElementSource anyClickableElement,
                                    FileDownloadFilter filter, long timeout) throws FileNotFoundException {
-    List<File> files = filter.getDownloadedFiles();
-    if (files.isEmpty()) {
+    List<FileDownloadFilter.Response> downloads = filter.getPotentialDownloads();
+
+    if (downloads.isEmpty()) {
       throw new FileNotFoundException("Failed to download file " + anyClickableElement +
-        " in " + timeout + " ms." + filter.getResponses());
+        " in " + timeout + " ms." + filter.allResponsesAsString());
     }
 
-    log.info("Downloaded file: {}", files.get(0).getAbsolutePath());
-    log.info("Just in case, all intercepted responses: {}", filter.getResponses());
-    return files.get(0);
+    // TODO sort by "likeness"
+    Config config = anyClickableElement.driver().config();
+    File file = downloader.saveFile(config, downloads.get(0));
+    log.info("Downloaded file: {}", file.getAbsolutePath());
+    log.info("Just in case, all intercepted responses: {}", filter.allResponsesAsString());
+    return file;
   }
 }

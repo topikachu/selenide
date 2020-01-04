@@ -1,7 +1,7 @@
 package com.codeborne.selenide.proxy;
 
-import com.codeborne.selenide.Config;
 import com.browserup.bup.BrowserUpProxyServer;
+import com.codeborne.selenide.Config;
 import org.assertj.core.api.WithAssertions;
 import org.junit.jupiter.api.Test;
 import org.openqa.selenium.Proxy;
@@ -28,7 +28,7 @@ class SelenideProxyServerTest implements WithAssertions {
     verify(bmp).start(0);
 
     FileDownloadFilter filter = proxyServer.responseFilter("download");
-    assertThat(filter.getDownloadedFiles()).hasSize(0);
+    assertThat(filter.getPotentialDownloads()).hasSize(0);
   }
 
   @Test

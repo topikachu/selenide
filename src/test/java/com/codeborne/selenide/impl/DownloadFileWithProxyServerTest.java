@@ -1,5 +1,6 @@
 package com.codeborne.selenide.impl;
 
+import com.browserup.bup.util.HttpMessageContents;
 import com.codeborne.selenide.Browser;
 import com.codeborne.selenide.DriverStub;
 import com.codeborne.selenide.SelenideConfig;
@@ -16,9 +17,10 @@ import org.openqa.selenium.WebElement;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.IOException;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.asList;
+import static java.util.Collections.emptyMap;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -33,14 +35,15 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class DownloadFileWithProxyServerTest implements WithAssertions {
-  private Waiter waiter = mock(Waiter.class);
-  private DownloadFileWithProxyServer command = new DownloadFileWithProxyServer(waiter);
+  private final Downloader downloader = new Downloader();
+  private final Waiter waiter = mock(Waiter.class);
+  private final DownloadFileWithProxyServer command = new DownloadFileWithProxyServer(waiter, downloader);
   private final SelenideConfig config = new SelenideConfig();
-  private WebDriver webdriver = mock(WebDriver.class);
-  private SelenideProxyServer proxy = mock(SelenideProxyServer.class);
-  private WebElementSource linkWithHref = mock(WebElementSource.class);
-  private WebElement link = mock(WebElement.class);
-  private FileDownloadFilter filter = spy(new FileDownloadFilter(new SelenideConfig().reportsFolder("build/downloads")));
+  private final WebDriver webdriver = mock(WebDriver.class);
+  private final SelenideProxyServer proxy = mock(SelenideProxyServer.class);
+  private final WebElementSource linkWithHref = mock(WebElementSource.class);
+  private final WebElement link = mock(WebElement.class);
+  private final FileDownloadFilter filter = spy(new FileDownloadFilter());
 
   @BeforeEach
   void setUp() {
@@ -54,8 +57,8 @@ class DownloadFileWithProxyServerTest implements WithAssertions {
   }
 
   @Test
-  void canInterceptFileViaProxyServer() throws IOException {
-    emulateServerResponseWithFiles(new File("report.pdf"));
+  void canInterceptFileViaProxyServer() throws FileNotFoundException {
+    emulateServerResponseWithFiles(file("report.pdf"));
 
     File file = command.download(linkWithHref, link, proxy, 3000);
     assertThat(file.getName())
@@ -66,16 +69,16 @@ class DownloadFileWithProxyServerTest implements WithAssertions {
     verify(filter).deactivate();
   }
 
-  private void emulateServerResponseWithFiles(final File... files) {
+  private void emulateServerResponseWithFiles(final FileDownloadFilter.Response... downloads) {
     doAnswer(invocation -> {
-      filter.getDownloadedFiles().addAll(asList(files));
+      filter.getPotentialDownloads().addAll(asList(downloads));
       return null;
     }).when(link).click();
   }
 
   @Test
-  void closesNewWindowIfFileWasOpenedInSeparateWindow() throws IOException {
-    emulateServerResponseWithFiles(new File("report.pdf"));
+  void closesNewWindowIfFileWasOpenedInSeparateWindow() throws FileNotFoundException {
+    emulateServerResponseWithFiles(file("report.pdf"));
     when(webdriver.getWindowHandle()).thenReturn("tab1");
     when(webdriver.getWindowHandles())
       .thenReturn(ImmutableSet.of("tab1", "tab2", "tab3"))
@@ -92,12 +95,12 @@ class DownloadFileWithProxyServerTest implements WithAssertions {
   }
 
   @Test
-  void ignoresErrorIfWindowHasAlreadyBeenClosedMeanwhile() throws IOException {
+  void ignoresErrorIfWindowHasAlreadyBeenClosedMeanwhile() throws FileNotFoundException {
     TargetLocator targetLocator = mock(TargetLocator.class);
     doReturn(targetLocator).when(webdriver).switchTo();
     doThrow(new NoSuchWindowException("no window: tab-with-pdf")).when(targetLocator).window("tab-with-pdf");
 
-    emulateServerResponseWithFiles(new File("report.pdf"));
+    emulateServerResponseWithFiles(file("report.pdf"));
     when(webdriver.getWindowHandle()).thenReturn("tab1");
     when(webdriver.getWindowHandles())
       .thenReturn(ImmutableSet.of("tab1", "tab2", "tab3"))
@@ -120,5 +123,11 @@ class DownloadFileWithProxyServerTest implements WithAssertions {
     assertThatThrownBy(() -> command.download(linkWithHref, link, proxy, 3000))
       .isInstanceOf(FileNotFoundException.class)
       .hasMessageStartingWith("Failed to download file <a href='report.pdf'>report</a>");
+  }
+
+  private FileDownloadFilter.Response file(String name) {
+    HttpMessageContents contents = mock(HttpMessageContents.class);
+    when(contents.getBinaryContents()).thenReturn("CONTENT".getBytes(UTF_8));
+    return new FileDownloadFilter.Response("https://blah.ee/" + name, 200, null, emptyMap(), contents);
   }
 }

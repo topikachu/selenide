@@ -37,7 +37,6 @@ import java.util.Optional;
 
 import static com.codeborne.selenide.impl.Describe.describe;
 import static org.apache.commons.io.FileUtils.copyInputStreamToFile;
-import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import static org.apache.http.client.protocol.HttpClientContext.COOKIE_STORE;
 
 public class DownloadFileWithHttpRequest {
@@ -178,8 +177,7 @@ public class DownloadFileWithHttpRequest {
       log.info("{}={}", header.getName(), header.getValue());
     }
 
-    String fileNameFromUrl = httpHelper.getFileName(fileToDownloadLocation);
-    return isNotBlank(fileNameFromUrl) ? fileNameFromUrl : downloader.randomFileName();
+    return downloader.fileName(fileToDownloadLocation, Optional.empty());
   }
 
   protected File saveFileContent(HttpResponse response, File downloadedFile) throws IOException {
